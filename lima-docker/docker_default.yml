@@ -9,24 +9,19 @@
 # $ export DOCKER_HOST=unix://$HOME/docker.sock
 # $ docker ...
 
-# This example requires Lima v0.7.3 or later
+# This example requires Lima v0.8.3 or later
 images:
   # Hint: run `limactl prune` to invalidate the "current" cache
   - location: "https://cloud-images.ubuntu.com/impish/current/impish-server-cloudimg-amd64.img"
     arch: "x86_64"
   - location: "https://cloud-images.ubuntu.com/impish/current/impish-server-cloudimg-arm64.img"
     arch: "aarch64"
-mounts:
-  - location: "~"
-    writable: true
-  - location: "/tmp/lima"
-    writable: true
 # CPUs: if you see performance issues, try limiting cpus to 1.
 # Default: 4
-cpus: 3
+cpus: 1
 # Memory size
 # Default: "4GiB"
-memory: 2GiB
+memory: 3GiB
 # Disk size
 # Default: "100GiB"
 disk: 50GiB
@@ -36,11 +31,24 @@ ssh:
   # This option is enabled by default.
   # If you have an insecure key under ~/.ssh, do not use this option.
   loadDotSSHPubKeys: true
+mounts:
+  - location: "~"
+    writable: true
+  - location: "/tmp/lima"
+    writable: true
 # containerd is managed by Docker, not by Lima, so the values are set to false here.
 containerd:
   system: false
   user: false
 provision:
+  - mode: system
+      # This script defines the host.docker.internal hostname when hostResolver is disabled.
+      # It is also needed for lima 0.8.2 and earlier, which does not support hostResolver.hosts.
+      # Names defined in /etc/hosts inside the VM are not resolved inside containers when
+      # using the hostResolver; use hostResolver.hosts instead (requires lima 0.8.3 or later).
+      script: |
+        #!/bin/sh
+        sed -i 's/host.lima.internal.*/host.lima.internal hostResolver.hosts/' /etc/hosts
   - mode: system
     script: |
       #!/bin/bash
@@ -71,6 +79,18 @@ probes:
         exit 1
       fi
     hint: See "/var/log/cloud-init-output.log". in the guest
+hostResolver:
+  # hostResolver.hosts requires lima 0.8.3 or later. Names defined here will also
+  # resolve inside containers, and not just inside the VM itself.
+  hosts:
+    host.docker.internal: host.lima.internal
 portForwards:
   - guestSocket: "/run/user/{{.UID}}/docker.sock"
     hostSocket: "{{.Home}}/docker.sock"
+message: |
+  To run `docker` on the host (assumes docker-cli is installed), run the following commands:
+  ------
+  docker context create lima --docker "host=unix://{{.Dir}}/sock/docker.sock"
+  docker context use lima
+  docker run hello-world
+  ------
